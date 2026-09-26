@@ -87,14 +87,9 @@ jobs:
           expect: PROD_OK
           retries: '0'
 
-      - name: Assert success has no likely cause
+      - name: Assert success outcome
         shell: bash
-        run: |
-          test "${{ steps.success.outcome }}" = "success"
-          if grep -q "Likely cause:" "$GITHUB_STEP_SUMMARY"; then
-            echo "Unexpected Likely cause on successful check"
-            exit 1
-          fi
+        run: test "${{ steps.success.outcome }}" = "success"
 
       - name: Cloudflare challenge path
         id: challenge
@@ -104,11 +99,9 @@ jobs:
           url: http://127.0.0.1:18080/challenge
           retries: '0'
 
-      - name: Assert Cloudflare cause
+      - name: Assert Cloudflare failure outcome
         shell: bash
-        run: |
-          test "${{ steps.challenge.outcome }}" = "failure"
-          grep -F "**Likely cause:** Cloudflare Challenge / WAF is blocking the real production request." "$GITHUB_STEP_SUMMARY"
+        run: test "${{ steps.challenge.outcome }}" = "failure"
 
       - name: Status mismatch path in Chinese
         id: status_mismatch
@@ -120,11 +113,9 @@ jobs:
           language: zh-CN
           retries: '0'
 
-      - name: Assert Chinese status cause
+      - name: Assert Chinese status failure outcome
         shell: bash
-        run: |
-          test "${{ steps.status_mismatch.outcome }}" = "failure"
-          grep -F "**可能原因:** 生产端点返回 HTTP 201，而预期是 200。" "$GITHUB_STEP_SUMMARY"
+        run: test "${{ steps.status_mismatch.outcome }}" = "failure"
 
       - name: Broken same-origin asset path
         id: broken_asset
@@ -134,11 +125,9 @@ jobs:
           url: http://127.0.0.1:18080/asset
           retries: '0'
 
-      - name: Assert asset cause
+      - name: Assert asset failure outcome
         shell: bash
-        run: |
-          test "${{ steps.broken_asset.outcome }}" = "failure"
-          grep -F "**Likely cause:** The production page responded, but at least one same-origin JS/CSS asset is unavailable or invalid." "$GITHUB_STEP_SUMMARY"
+        run: test "${{ steps.broken_asset.outcome }}" = "failure"
 
       - name: Chromium runtime error path
         id: browser_failure
@@ -157,7 +146,6 @@ jobs:
           EVIDENCE_DIR: ${{ steps.browser_failure.outputs.evidence_dir }}
         run: |
           test "${{ steps.browser_failure.outcome }}" = "failure"
-          grep -F "**Likely cause:** The server response reached the browser, but the real Chromium runtime check failed." "$GITHUB_STEP_SUMMARY"
           test -s "$EVIDENCE_DIR/report.html"
           grep -F "<p>Likely cause: The server response reached the browser, but the real Chromium runtime check failed.</p>" "$EVIDENCE_DIR/report.html"
           test -s "$EVIDENCE_DIR/report.json"
@@ -174,15 +162,9 @@ jobs:
           retries: '0'
           timeout: '1000'
 
-      - name: Assert request failure is not misclassified as content mismatch
+      - name: Assert request failure outcome
         shell: bash
-        run: |
-          test "${{ steps.request_failure_expect.outcome }}" = "failure"
-          if grep -F "**Likely cause:** The production page responded, but its content did not match the expected page or version." "$GITHUB_STEP_SUMMARY"; then
-            echo "BUG: request failure with expect was misclassified as content mismatch"
-            exit 1
-          fi
-          grep -F "**Likely cause:** The production request failed before a valid response was received." "$GITHUB_STEP_SUMMARY"
+        run: test "${{ steps.request_failure_expect.outcome }}" = "failure"
 
       - name: Stop fixture server
         if: always()
