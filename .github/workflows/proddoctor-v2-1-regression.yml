@@ -81,7 +81,7 @@ jobs:
 
       - name: Success path stays clean
         id: success
-        uses: lucaswenbo/ProdDoctor@v2.1.0
+        uses: lucaswenbo/ProdDoctor@6ad92c536ae86cb97546f78018185e538e348cb6
         with:
           url: http://127.0.0.1:18080/ok
           expect: PROD_OK
@@ -94,7 +94,7 @@ jobs:
       - name: Cloudflare challenge path
         id: challenge
         continue-on-error: true
-        uses: lucaswenbo/ProdDoctor@v2.1.0
+        uses: lucaswenbo/ProdDoctor@6ad92c536ae86cb97546f78018185e538e348cb6
         with:
           url: http://127.0.0.1:18080/challenge
           retries: '0'
@@ -106,7 +106,7 @@ jobs:
       - name: Status mismatch path in Chinese
         id: status_mismatch
         continue-on-error: true
-        uses: lucaswenbo/ProdDoctor@v2.1.0
+        uses: lucaswenbo/ProdDoctor@6ad92c536ae86cb97546f78018185e538e348cb6
         with:
           url: http://127.0.0.1:18080/created
           status: '200'
@@ -120,7 +120,7 @@ jobs:
       - name: Broken same-origin asset path
         id: broken_asset
         continue-on-error: true
-        uses: lucaswenbo/ProdDoctor@v2.1.0
+        uses: lucaswenbo/ProdDoctor@6ad92c536ae86cb97546f78018185e538e348cb6
         with:
           url: http://127.0.0.1:18080/asset
           retries: '0'
@@ -132,7 +132,7 @@ jobs:
       - name: Chromium runtime error path
         id: browser_failure
         continue-on-error: true
-        uses: lucaswenbo/ProdDoctor@v2.1.0
+        uses: lucaswenbo/ProdDoctor@6ad92c536ae86cb97546f78018185e538e348cb6
         with:
           url: http://127.0.0.1:18080/browser
           browser: 'true'
@@ -155,7 +155,7 @@ jobs:
       - name: Request failure with expect configured
         id: request_failure_expect
         continue-on-error: true
-        uses: lucaswenbo/ProdDoctor@v2.1.0
+        uses: lucaswenbo/ProdDoctor@6ad92c536ae86cb97546f78018185e538e348cb6
         with:
           url: http://127.0.0.1:65530/unreachable
           expect: NEVER_PRESENT
