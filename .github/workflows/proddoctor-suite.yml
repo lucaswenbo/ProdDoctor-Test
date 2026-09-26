@@ -1,0 +1,108 @@
+name: ProdDoctor Integration Suite
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  lightweight:
+    name: Lightweight behavior
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Default English should pass
+        uses: lucaswenbo/ProdDoctor@v2.0.1
+        with:
+          url: https://example.com
+          expect: Example Domain
+          status: 200
+
+      - name: Chinese opt-in should pass
+        uses: lucaswenbo/ProdDoctor@v2.0.1
+        with:
+          url: https://example.com
+          language: zh-CN
+          expect: Example Domain
+          status: 200
+
+      - name: Intentional content mismatch should fail
+        id: expected_failure
+        continue-on-error: true
+        uses: lucaswenbo/ProdDoctor@v2.0.1
+        with:
+          url: https://example.com
+          expect: THIS_TEXT_MUST_NOT_EXIST_PRODDOCTOR_TEST_987654321
+          status: 200
+
+      - name: Confirm ProdDoctor really blocked the bad result
+        if: always()
+        shell: bash
+        run: |
+          echo "Expected-failure outcome: ${{ steps.expected_failure.outcome }}"
+          test "${{ steps.expected_failure.outcome }}" = "failure"
+
+  browser:
+    name: Chromium evidence
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Run released ProdDoctor with Chromium
+        id: doctor
+        uses: lucaswenbo/ProdDoctor@v2.0.1
+        with:
+          url: https://example.com
+          status: 200
+          browser: true
+          browser_expect: Example Domain
+          browser_profile: mobile
+          browser_trace: always
+          upload_screenshot: true
+          upload_report: true
+
+      - name: Verify generated evidence locally
+        shell: bash
+        env:
+          EVIDENCE_DIR: ${{ steps.doctor.outputs.evidence_dir }}
+          EVIDENCE_NAME: ${{ steps.doctor.outputs.evidence_name }}
+        run: |
+          set -euo pipefail
+          echo "Evidence name: $EVIDENCE_NAME"
+          echo "Evidence dir: $EVIDENCE_DIR"
+
+          test -n "$EVIDENCE_DIR"
+          test -n "$EVIDENCE_NAME"
+          test -f "$EVIDENCE_DIR/browser.png"
+          test -f "$EVIDENCE_DIR/report.html"
+          test -f "$EVIDENCE_DIR/report.json"
+          test -f "$EVIDENCE_DIR/trace.zip"
+
+          EVIDENCE_DIR="$EVIDENCE_DIR" node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const dir = process.env.EVIDENCE_DIR;
+          const html = fs.readFileSync(path.join(dir, 'report.html'), 'utf8');
+          const jsonText = fs.readFileSync(path.join(dir, 'report.json'), 'utf8');
+          const data = JSON.parse(jsonText);
+
+          if (!html.includes('ProdDoctor Production Report')) {
+            throw new Error('HTML report did not default to English');
+          }
+          if (/[\u3400-\u9fff]/.test(html)) {
+            throw new Error('HTML report unexpectedly contains Chinese text in default English mode');
+          }
+          if (/[\u3400-\u9fff]/.test(jsonText)) {
+            throw new Error('JSON report unexpectedly contains Chinese diagnostic text in default English mode');
+          }
+          if (data.version !== '2.0.1') {
+            throw new Error('Expected report version 2.0.1, got ' + data.version);
+          }
+          if (data.ok !== true) {
+            throw new Error('Expected example.com browser check to pass');
+          }
+          console.log('Evidence files and default-English reports verified.');
+          NODE
