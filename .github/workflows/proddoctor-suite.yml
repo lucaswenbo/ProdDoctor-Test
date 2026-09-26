@@ -16,14 +16,14 @@ jobs:
 
     steps:
       - name: Default English should pass
-        uses: lucaswenbo/ProdDoctor@v2.0.1
+        uses: lucaswenbo/ProdDoctor@v2.1.0
         with:
           url: https://example.com
           expect: Example Domain
           status: 200
 
       - name: Chinese opt-in should pass
-        uses: lucaswenbo/ProdDoctor@v2.0.1
+        uses: lucaswenbo/ProdDoctor@v2.1.0
         with:
           url: https://example.com
           language: zh-CN
@@ -33,7 +33,7 @@ jobs:
       - name: Intentional content mismatch should fail
         id: expected_failure
         continue-on-error: true
-        uses: lucaswenbo/ProdDoctor@v2.0.1
+        uses: lucaswenbo/ProdDoctor@v2.1.0
         with:
           url: https://example.com
           expect: THIS_TEXT_MUST_NOT_EXIST_PRODDOCTOR_TEST_987654321
@@ -53,7 +53,7 @@ jobs:
     steps:
       - name: Run released ProdDoctor with Chromium
         id: doctor
-        uses: lucaswenbo/ProdDoctor@v2.0.1
+        uses: lucaswenbo/ProdDoctor@v2.1.0
         with:
           url: https://example.com
           status: 200
@@ -98,8 +98,8 @@ jobs:
           if (/[\u3400-\u9fff]/.test(jsonText)) {
             throw new Error('JSON report unexpectedly contains Chinese diagnostic text in default English mode');
           }
-          if (data.version !== '2.0.1') {
-            throw new Error('Expected report version 2.0.1, got ' + data.version);
+          if (data.version !== '2.1.0') {
+            throw new Error('Expected report version 2.1.0, got ' + data.version);
           }
           if (data.ok !== true) {
             throw new Error('Expected example.com browser check to pass');
