@@ -1,6 +1,8 @@
 name: ProdDoctor v2.1.0 regression
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
