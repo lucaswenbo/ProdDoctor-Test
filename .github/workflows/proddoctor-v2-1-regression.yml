@@ -1,0 +1,189 @@
+name: ProdDoctor v2.1.0 regression
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Start deterministic fixture server
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/proddoctor-fixture.mjs" <<'NODE'
+          import http from 'node:http';
+
+          const server = http.createServer((req, res) => {
+            if (req.url === '/robots.txt') {
+              res.setHeader('Content-Type', 'text/plain');
+              return res.end('User-agent: *\nAllow: /');
+            }
+            if (req.url === '/sitemap.xml') {
+              res.setHeader('Content-Type', 'application/xml');
+              return res.end('<?xml version="1.0"?><urlset></urlset>');
+            }
+            if (req.url === '/missing.js') {
+              res.statusCode = 404;
+              res.setHeader('Content-Type', 'text/javascript');
+              return res.end('missing');
+            }
+            if (req.url === '/ok') {
+              res.setHeader('Content-Type', 'text/html');
+              return res.end('<html><body><h1>PROD_OK</h1></body></html>');
+            }
+            if (req.url === '/created') {
+              res.statusCode = 201;
+              res.setHeader('Content-Type', 'text/html');
+              return res.end('<html><body><h1>CREATED</h1></body></html>');
+            }
+            if (req.url === '/challenge') {
+              res.statusCode = 403;
+              res.setHeader('Content-Type', 'text/html');
+              return res.end('<html><title>Just a moment...</title><body>/cdn-cgi/challenge-platform/x</body></html>');
+            }
+            if (req.url === '/asset') {
+              res.setHeader('Content-Type', 'text/html');
+              return res.end('<html><body><h1>ASSET_PAGE</h1><script src="/missing.js"></script></body></html>');
+            }
+            if (req.url === '/browser') {
+              res.setHeader('Content-Type', 'text/html');
+              return res.end('<html><body><h1>BROWSER_PAGE</h1><script>throw new Error("fixture boom")</script></body></html>');
+            }
+            res.statusCode = 404;
+            res.setHeader('Content-Type', 'text/plain');
+            res.end('not found');
+          });
+
+          server.listen(18080, '127.0.0.1', () => console.log('fixture-ready'));
+          NODE
+
+          node "$RUNNER_TEMP/proddoctor-fixture.mjs" > "$RUNNER_TEMP/fixture.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/fixture.pid"
+
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:18080/ok >/dev/null; then
+              exit 0
+            fi
+            sleep 0.2
+          done
+
+          cat "$RUNNER_TEMP/fixture.log"
+          exit 1
+
+      - name: Success path stays clean
+        id: success
+        uses: lucaswenbo/ProdDoctor@v2.1.0
+        with:
+          url: http://127.0.0.1:18080/ok
+          expect: PROD_OK
+          retries: '0'
+
+      - name: Assert success has no likely cause
+        shell: bash
+        run: |
+          test "${{ steps.success.outcome }}" = "success"
+          if grep -q "Likely cause:" "$GITHUB_STEP_SUMMARY"; then
+            echo "Unexpected Likely cause on successful check"
+            exit 1
+          fi
+
+      - name: Cloudflare challenge path
+        id: challenge
+        continue-on-error: true
+        uses: lucaswenbo/ProdDoctor@v2.1.0
+        with:
+          url: http://127.0.0.1:18080/challenge
+          retries: '0'
+
+      - name: Assert Cloudflare cause
+        shell: bash
+        run: |
+          test "${{ steps.challenge.outcome }}" = "failure"
+          grep -F "**Likely cause:** Cloudflare Challenge / WAF is blocking the real production request." "$GITHUB_STEP_SUMMARY"
+
+      - name: Status mismatch path in Chinese
+        id: status_mismatch
+        continue-on-error: true
+        uses: lucaswenbo/ProdDoctor@v2.1.0
+        with:
+          url: http://127.0.0.1:18080/created
+          status: '200'
+          language: zh-CN
+          retries: '0'
+
+      - name: Assert Chinese status cause
+        shell: bash
+        run: |
+          test "${{ steps.status_mismatch.outcome }}" = "failure"
+          grep -F "**可能原因:** 生产端点返回 HTTP 201，而预期是 200。" "$GITHUB_STEP_SUMMARY"
+
+      - name: Broken same-origin asset path
+        id: broken_asset
+        continue-on-error: true
+        uses: lucaswenbo/ProdDoctor@v2.1.0
+        with:
+          url: http://127.0.0.1:18080/asset
+          retries: '0'
+
+      - name: Assert asset cause
+        shell: bash
+        run: |
+          test "${{ steps.broken_asset.outcome }}" = "failure"
+          grep -F "**Likely cause:** The production page responded, but at least one same-origin JS/CSS asset is unavailable or invalid." "$GITHUB_STEP_SUMMARY"
+
+      - name: Chromium runtime error path
+        id: browser_failure
+        continue-on-error: true
+        uses: lucaswenbo/ProdDoctor@v2.1.0
+        with:
+          url: http://127.0.0.1:18080/browser
+          browser: 'true'
+          browser_expect: BROWSER_PAGE
+          retries: '0'
+          browser_trace: always
+
+      - name: Assert browser cause and generated HTML report
+        shell: bash
+        env:
+          EVIDENCE_DIR: ${{ steps.browser_failure.outputs.evidence_dir }}
+        run: |
+          test "${{ steps.browser_failure.outcome }}" = "failure"
+          grep -F "**Likely cause:** The server response reached the browser, but the real Chromium runtime check failed." "$GITHUB_STEP_SUMMARY"
+          test -s "$EVIDENCE_DIR/report.html"
+          grep -F "<p>Likely cause: The server response reached the browser, but the real Chromium runtime check failed.</p>" "$EVIDENCE_DIR/report.html"
+          test -s "$EVIDENCE_DIR/report.json"
+          test -s "$EVIDENCE_DIR/browser.png"
+          test -s "$EVIDENCE_DIR/trace.zip"
+
+      - name: Request failure with expect configured
+        id: request_failure_expect
+        continue-on-error: true
+        uses: lucaswenbo/ProdDoctor@v2.1.0
+        with:
+          url: http://127.0.0.1:65530/unreachable
+          expect: NEVER_PRESENT
+          retries: '0'
+          timeout: '1000'
+
+      - name: Assert request failure is not misclassified as content mismatch
+        shell: bash
+        run: |
+          test "${{ steps.request_failure_expect.outcome }}" = "failure"
+          if grep -F "**Likely cause:** The production page responded, but its content did not match the expected page or version." "$GITHUB_STEP_SUMMARY"; then
+            echo "BUG: request failure with expect was misclassified as content mismatch"
+            exit 1
+          fi
+          grep -F "**Likely cause:** The production request failed before a valid response was received." "$GITHUB_STEP_SUMMARY"
+
+      - name: Stop fixture server
+        if: always()
+        shell: bash
+        run: |
+          kill "$(cat "$RUNNER_TEMP/fixture.pid")" 2>/dev/null || true
