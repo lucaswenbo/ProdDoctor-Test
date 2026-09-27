@@ -1,4 +1,4 @@
-name: ProdDoctor v2.1.0 regression
+name: ProdDoctor v2.1.1 Failure Diagnosis Demo
 
 on:
   push:
@@ -11,7 +11,8 @@ permissions:
   contents: read
 
 jobs:
-  regression:
+  demo:
+    name: Run six reproducible production scenarios
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -79,9 +80,9 @@ jobs:
           cat "$RUNNER_TEMP/fixture.log"
           exit 1
 
-      - name: Success path stays clean
+      - name: 1. Healthy production path
         id: success
-        uses: lucaswenbo/ProdDoctor@v2.1.0
+        uses: lucaswenbo/ProdDoctor@v2.1.1
         with:
           url: http://127.0.0.1:18080/ok
           expect: PROD_OK
@@ -91,10 +92,10 @@ jobs:
         shell: bash
         run: test "${{ steps.success.outcome }}" = "success"
 
-      - name: Cloudflare challenge path
+      - name: 2. Cloudflare Challenge / WAF
         id: challenge
         continue-on-error: true
-        uses: lucaswenbo/ProdDoctor@v2.1.0
+        uses: lucaswenbo/ProdDoctor@v2.1.1
         with:
           url: http://127.0.0.1:18080/challenge
           retries: '0'
@@ -103,10 +104,10 @@ jobs:
         shell: bash
         run: test "${{ steps.challenge.outcome }}" = "failure"
 
-      - name: Status mismatch path in Chinese
+      - name: 3. HTTP status mismatch (Chinese output)
         id: status_mismatch
         continue-on-error: true
-        uses: lucaswenbo/ProdDoctor@v2.1.0
+        uses: lucaswenbo/ProdDoctor@v2.1.1
         with:
           url: http://127.0.0.1:18080/created
           status: '200'
@@ -117,10 +118,10 @@ jobs:
         shell: bash
         run: test "${{ steps.status_mismatch.outcome }}" = "failure"
 
-      - name: Broken same-origin asset path
+      - name: 4. Broken same-origin JS asset
         id: broken_asset
         continue-on-error: true
-        uses: lucaswenbo/ProdDoctor@v2.1.0
+        uses: lucaswenbo/ProdDoctor@v2.1.1
         with:
           url: http://127.0.0.1:18080/asset
           retries: '0'
@@ -129,10 +130,10 @@ jobs:
         shell: bash
         run: test "${{ steps.broken_asset.outcome }}" = "failure"
 
-      - name: Chromium runtime error path
+      - name: 5. Chromium runtime error
         id: browser_failure
         continue-on-error: true
-        uses: lucaswenbo/ProdDoctor@v2.1.0
+        uses: lucaswenbo/ProdDoctor@v2.1.1
         with:
           url: http://127.0.0.1:18080/browser
           browser: 'true'
@@ -152,10 +153,10 @@ jobs:
           test -s "$EVIDENCE_DIR/browser.png"
           test -s "$EVIDENCE_DIR/trace.zip"
 
-      - name: Request failure with expect configured
+      - name: 6. v2.1.1 fix - no response plus expect
         id: request_failure_expect
         continue-on-error: true
-        uses: lucaswenbo/ProdDoctor@v2.1.0
+        uses: lucaswenbo/ProdDoctor@v2.1.1
         with:
           url: http://127.0.0.1:65530/unreachable
           expect: NEVER_PRESENT
@@ -165,6 +166,25 @@ jobs:
       - name: Assert request failure outcome
         shell: bash
         run: test "${{ steps.request_failure_expect.outcome }}" = "failure"
+
+      - name: Demo summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## ProdDoctor v2.1.1 demo"
+            echo
+            echo "This run intentionally exercises one healthy path and five failure paths."
+            echo
+            echo "- Healthy production path -> PASS"
+            echo "- Cloudflare Challenge / WAF -> Likely cause identifies edge/WAF blocking"
+            echo "- HTTP status mismatch -> Likely cause reports actual vs expected status"
+            echo "- Broken same-origin JS -> Likely cause points to asset failure"
+            echo "- Chromium runtime error -> Likely cause points to browser runtime"
+            echo "- No response + expect -> request failure takes priority over content mismatch (fixed in v2.1.1)"
+            echo
+            echo "Open the individual ProdDoctor steps above to see the exact human-readable diagnosis."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Stop fixture server
         if: always()
