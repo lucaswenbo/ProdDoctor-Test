@@ -9,7 +9,7 @@ jobs:
 
     steps:
       - name: Check real production site
-        uses: lucaswenbo/ProdDoctor@v2.0.1
+        uses: lucaswenbo/ProdDoctor@v2.1.1
         with:
           url: https://example.com
           expect: Example Domain
