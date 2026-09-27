@@ -104,17 +104,16 @@ jobs:
         shell: bash
         run: test "${{ steps.challenge.outcome }}" = "failure"
 
-      - name: 3. HTTP status mismatch (Chinese output)
+      - name: 3. HTTP status mismatch
         id: status_mismatch
         continue-on-error: true
         uses: lucaswenbo/ProdDoctor@v2.1.1
         with:
           url: http://127.0.0.1:18080/created
           status: '200'
-          language: zh-CN
           retries: '0'
 
-      - name: Assert Chinese status failure outcome
+      - name: Assert status failure outcome
         shell: bash
         run: test "${{ steps.status_mismatch.outcome }}" = "failure"
 
